@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  - pull_request
+
+jobs:
+  Test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.20.x
+      - name: Unit Test
+        run: |
+          make test
+      - name: Test Demo Service
+        run: |
+          set -e
+          make build install
+          sudo go-svc service install
+          sudo go-svc service start
