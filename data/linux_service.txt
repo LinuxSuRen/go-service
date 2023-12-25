@@ -1,0 +1,8 @@
+[Unit]
+Description={{.Description}}
+
+[Service]
+ExecStart=/usr/bin/env {{.Command}} {{ range $arg := .Args}}{{$arg}} {{ end}}
+
+[Install]
+WantedBy=multi-user.target

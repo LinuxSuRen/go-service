@@ -1,0 +1,8 @@
+[Unit]
+Description=description
+
+[Service]
+ExecStart=/usr/bin/env command arg-1 arg-2 
+
+[Install]
+WantedBy=multi-user.target

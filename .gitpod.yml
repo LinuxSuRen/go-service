@@ -1,0 +1,6 @@
+tasks:
+  - init: make init-env
+
+vscode:
+  extensions:
+    - golang.go
