@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rick.
+Copyright 2023-2025 Rick.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,10 @@ type containerService struct {
 	image        string
 	tag          string
 	pull         string
+	restart      string
+	volumes      map[string]string
+	ports        map[int]int
+	args         []string
 	localStorage string
 	secretServer string
 	skyWalking   string
@@ -41,9 +45,11 @@ type containerService struct {
 }
 
 type ContainerOption struct {
-	ID, Name         string
-	Image, Tag, Pull string
-	Writer           io.Writer
+	ID, Name                  string
+	Image, Tag, Pull, Restart string
+	Volumes                   map[string]string
+	Ports                     map[int]int
+	Writer                    io.Writer
 }
 
 func NewContainerService(service CommonService, client string,
@@ -53,22 +59,26 @@ func NewContainerService(service CommonService, client string,
 	pull := containerOption.Pull
 	writer := containerOption.Writer
 
-	if tag == "" {
+	if tag == "" || tag == "latest" {
 		tag = "latest"
-	} else if !strings.HasPrefix(tag, "v") {
+	} else if !strings.HasPrefix(tag, "v") && tag != "master" {
 		tag = fmt.Sprintf("v%s", tag)
 	}
 
 	containerServer := &containerService{
-		Execer: service.Execer,
-		client: client,
-		id:     containerOption.ID,
-		name:   containerOption.Name,
-		image:  image,
-		tag:    tag,
-		pull:   pull,
-		stdOut: writer,
-		errOut: writer,
+		Execer:  service.Execer,
+		args:    service.Args,
+		client:  client,
+		id:      containerOption.ID,
+		name:    containerOption.Name,
+		image:   image,
+		tag:     tag,
+		pull:    pull,
+		volumes: containerOption.Volumes,
+		ports:   containerOption.Ports,
+		restart: EmptyThenDefault(containerOption.Restart, "always"),
+		stdOut:  writer,
+		errOut:  writer,
 	}
 
 	if strings.HasSuffix(client, ServiceModePodman.String()) {
@@ -85,7 +95,11 @@ func (s *containerService) Start() (output string, err error) {
 	if s.exist() {
 		output, err = s.Execer.RunCommandAndReturn(s.client, "", "start", s.name)
 	} else {
-		err = s.Execer.SystemCall(s.client, append([]string{s.client}, s.getStartArgs()...), os.Environ())
+		if s.Execer.OS() == "windows" {
+			output, err = s.Execer.RunCommandAndReturn(s.client, "", s.getStartArgs()...)
+		} else {
+			err = s.Execer.SystemCall(s.client, append([]string{s.client}, s.getStartArgs()...), os.Environ())
+		}
 	}
 	return
 }
@@ -129,20 +143,17 @@ func (s *containerService) exist() bool {
 
 func (s *containerService) getStartArgs() []string {
 	args := []string{"run", "--name=" + s.name,
-		"--restart=always",
+		fmt.Sprintf("--restart=%s", s.restart),
 		"-d",
-		fmt.Sprintf("--pull=%s", s.pull),
-		"--network=host",
-		"-v", s.localStorage + ":/var/www/data",
-		"-v", os.ExpandEnv("$HOME/.config/atest:/root/.config/atest"),
-		s.image + ":" + s.tag,
-		"atest", "server"}
-	if s.secretServer != "" {
-		args = append(args, "--secret-server="+s.secretServer)
+		fmt.Sprintf("--pull=%s", s.pull)}
+	for k, v := range s.volumes {
+		args = append(args, "-v", k+":"+v)
 	}
-	if s.skyWalking != "" {
-		args = append(args, "--skywalking="+s.skyWalking)
+	for k, v := range s.ports {
+		args = append(args, "-p", fmt.Sprintf("%d:%d", k, v))
 	}
+	args = append(args, s.image+":"+s.tag)
+	args = append(args, s.args...)
 	return args
 }
 
